@@ -12,8 +12,27 @@ if [[ ! -f "$CONFIG" ]]; then
   exit 1
 fi
 
+SWIFT_ARGS=()
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line%%#*}"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  [[ -z "$line" ]] && continue
+  [[ "$line" != *:* ]] && continue
+
+  key="${line%%:*}"
+  value="${line#*:}"
+  key="${key#"${key%%[![:space:]]*}"}"
+  key="${key%"${key##*[![:space:]]}"}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  [[ -z "$key" || -z "$value" ]] && continue
+
+  SWIFT_ARGS+=("--$key" "$value")
+done < "$CONFIG"
+
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
 export NPROC_PER_NODE="${NPROC_PER_NODE:-4}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
-swift sft --config "$CONFIG"
+swift sft "${SWIFT_ARGS[@]}"
