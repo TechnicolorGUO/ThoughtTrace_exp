@@ -1,0 +1,15 @@
+{
+  "prediction_file": "data/processed/user_sim_test.jsonl",
+  "num_examples": 339,
+  "bleu": {
+    "bleu": 1.0,
+    "bleu_percent": 100.0,
+    "brevity_penalty": 1.0,
+    "prediction_tokens": 7000.0,
+    "reference_tokens": 7000.0,
+    "precision_1": 1.0,
+    "precision_2": 1.0,
+    "precision_3": 1.0,
+    "precision_4": 1.0
+  }
+}

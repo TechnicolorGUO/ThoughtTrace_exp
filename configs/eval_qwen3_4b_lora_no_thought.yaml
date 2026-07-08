@@ -1,0 +1,10 @@
+predictions: outputs/qwen3_4b_lora_no_thought/predictions.jsonl
+output: outputs/qwen3_4b_lora_no_thought/eval.json
+
+prediction_key: prediction
+reference_key: reference
+parse_thought: false
+
+skip_embedding: false
+embedding_model: sentence-transformers/all-MiniLM-L6-v2
+embedding_batch_size: 32

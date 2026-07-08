@@ -1,0 +1,28 @@
+{
+  "total_conversations": 2155,
+  "train_conversations": 1939,
+  "test_conversations": 216,
+  "train_samples": 2494,
+  "test_samples": 339,
+  "test_ratio": 0.1,
+  "seed": 42,
+  "max_history_turns": 6,
+  "require_reaction": true,
+  "require_reason": true,
+  "train_stats": {
+    "conversations": 1939,
+    "assistant_to_user_pairs": 5760,
+    "skipped_missing_reaction": 1989,
+    "skipped_missing_reason": 1277,
+    "skipped_empty_reply": 0,
+    "samples": 2494
+  },
+  "test_stats": {
+    "conversations": 216,
+    "assistant_to_user_pairs": 614,
+    "skipped_missing_reaction": 151,
+    "skipped_missing_reason": 124,
+    "skipped_empty_reply": 0,
+    "samples": 339
+  }
+}
