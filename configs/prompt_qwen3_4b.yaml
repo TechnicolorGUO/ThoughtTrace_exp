@@ -1,0 +1,12 @@
+model: /root/autodl-fs/beichen/public_models/Qwen3-4B
+
+dataset: data/processed/user_sim_no_thought_test.jsonl
+output: outputs/qwen3_4b_prompt/predictions.jsonl
+
+max_new_tokens: 256
+temperature: 0.0
+top_p: 1.0
+do_sample: false
+torch_dtype: bfloat16
+device_map: auto
+trust_remote_code: true

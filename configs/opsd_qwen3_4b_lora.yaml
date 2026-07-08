@@ -1,0 +1,74 @@
+# OPSD (On-Policy Self-Distillation) — Qwen3-4B LoRA
+# Consumed by TRL's TrlParser via: opsd_train.py --config <this file>
+# Ported from OPSD/scripts/run_opsd_4b.sh into the ThoughtTrace_exp layout.
+#
+# What OPSD does: the student rolls out conditioned ONLY on `problem`; the
+# teacher (same model + privileged `solution` in context) scores the student's
+# own tokens; training minimizes a per-token forward-KL (beta=0) with KL
+# clipping. It is on-policy self-distillation, NOT plain SFT.
+
+# ---- Model ----
+model_name_or_path: /root/autodl-fs/beichen/public_models/Qwen3-4B
+torch_dtype: bfloat16
+attn_implementation: flash_attention_2
+trust_remote_code: true
+
+# ---- Dataset ----
+# ThoughtTrace user-simulation data converted to OPSD problem/solution columns:
+#   problem  = conversation history + assistant latest reply (student-visible)
+#   solution = user's private thought (teacher-only privileged context)
+# Generate with: python data/scripts/convert_to_opsd.py
+dataset_name: data/processed/user_sim_opsd_train.jsonl
+dataset_split: train
+problem_column: problem
+solution_column: solution
+
+# ---- LoRA (PEFT) ----
+use_peft: true
+lora_r: 64
+lora_alpha: 128
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# ---- OPSD teacher / loss ----
+fixed_teacher: true          # teacher = base model with LoRA adapters disabled (no extra model in memory)
+beta: 0.0                    # 0 = forward KL(teacher || student), the OPSD default
+jsd_token_clip: 0.05         # per-token KL clip; tames high-divergence style tokens
+# The "thought" is task content given to the teacher, NOT model chain-of-thought.
+# Keep both non-thinking so student/teacher distributions align on the same
+# next-message tokens (student never emits a <think> chain).
+teacher_thinking: false
+student_thinking: false
+
+# ---- Rollout / generation ----
+use_vllm: true
+vllm_mode: colocate
+vllm_gpu_memory_utilization: 0.6
+vllm_tensor_parallel_size: 1
+max_completion_length: 1024
+temperature: 1.1
+top_p: 0.95
+top_k: 20
+lmbda: 1
+
+# ---- Optimization ----
+learning_rate: 5e-6
+max_grad_norm: 0.1
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 1
+gradient_checkpointing: true
+num_train_epochs: 30
+max_length: 20000
+
+# ---- Logging / checkpoints ----
+output_dir: outputs/qwen3_4b_opsd
+run_config: qwen34b_gen1024_fixteacher_temp11_forwardbeta0_clip005
+save_steps: 25
+logging_steps: 2
+wandb_project: OPSD

@@ -1,121 +1,210 @@
 # ThoughtTrace_exp
 
-Privileged distillation for user simulation in dialogue — using the SOC dataset to train models that predict a user's next utterance given conversation context.
+Privileged distillation for user simulation in dialogue. The project uses the ThoughtTrace dataset to train and evaluate models that predict a user's next utterance from the conversation context and the assistant's latest reply.
 
 ## Structure
 
 ```
 ├── README.md
-├── requirements.txt
-├── .gitignore
 │
 ├── configs/
-│   ├── sft_4b.yaml
-│   ├── sft_8b.yaml
-│   ├── prompt.yaml
-│   └── opsd_4b_4b.yaml
+│   ├── sft_qwen3_4b_lora_thought.yaml
+│   ├── sft_qwen3_4b_lora_no_thought.yaml
+│   ├── prompt_qwen3_4b.yaml
+│   ├── eval_qwen3_4b_lora_thought.yaml
+│   ├── eval_qwen3_4b_lora_no_thought.yaml
+│   └── eval_qwen3_4b_prompt.yaml
 │
 ├── data/
-│   ├── raw/                    # SOC raw data (gitignored)
+│   ├── raw/
+│   │   └── ThoughtTrace.jsonl
 │   ├── processed/
-│   │   ├── train.json
-│   │   └── test_260.json       # fixed test set (10%)
+│   │   ├── train_conversations.jsonl
+│   │   ├── test_conversations.jsonl
+│   │   ├── split_ids.json
+│   │   ├── user_sim_train.jsonl
+│   │   ├── user_sim_test.jsonl
+│   │   ├── user_sim_no_thought_train.jsonl
+│   │   └── user_sim_no_thought_test.jsonl
 │   └── scripts/
-│       ├── split_data.py
-│       └── augment.py
+│       ├── convert_to_swift_sft.py
+│       └── convert_to_swift_sft_no_thought.py
+│
+├── scripts/
+│   ├── train_qwen3_4b_lora.sh
+│   ├── run_prompt_baseline.sh
+│   └── eval.sh
 │
 ├── src/
 │   ├── data/
 │   │   ├── dataset.py
 │   │   └── prompts.py
-│   ├── sft/
-│   │   ├── train.py
-│   │   └── inference.py
-│   ├── prompt/
-│   │   └── inference.py
-│   ├── opsd/
-│   │   ├── train.py
-│   │   └── inference.py
+│   ├── inference/
+│   │   ├── generate.py
+│   │   └── parse_outputs.py
 │   └── eval/
 │       ├── bleu.py
 │       ├── embedding_sim.py
 │       └── run_eval.py
 │
-├── scripts/
-│   ├── run_sft.sh
-│   ├── run_prompt.sh
-│   └── run_opsd.sh
-│
-└── outputs/                    # checkpoints & logs (gitignored)
-    ├── sft_4b/
-    ├── sft_8b/
-    ├── prompt/
-    └── opsd_4b_4b/
-```
-
-## Setup
-
-```bash
-pip install -r requirements.txt
+└── outputs/
+    ├── qwen3_4b_lora_thought/
+    ├── qwen3_4b_lora_no_thought/
+    └── qwen3_4b_prompt/
 ```
 
 ## Data
 
-The ThoughtTrace dataset provides conversation context paired with user thoughts (reaction + motivation) and the user's next message.
+Put the raw ThoughtTrace file at:
 
-- Raw data: place under `data/raw/` (not tracked by Git).
-- Run `data/scripts/split_data.py` to produce `data/processed/train.json` and `data/processed/test_260.json`.
+```bash
+data/raw/ThoughtTrace.jsonl
+```
+
+The conversion scripts first split the raw data at the conversation level, then construct `assistant -> user` prediction examples. This avoids leakage where turns from the same conversation appear in both train and test.
+
+Generate the thought-augmented SFT data:
+
+```bash
+python data/scripts/convert_to_swift_sft.py
+```
+
+Generate the no-thought SFT data:
+
+```bash
+python data/scripts/convert_to_swift_sft_no_thought.py
+```
+
+Both scripts use the same default split:
+
+```text
+test_ratio: 0.10
+seed: 42
+```
+
+The thought and no-thought SFT files are pair-level aligned. The no-thought version does not expose thought text in the input or output, but it uses the same examples as the thought version for a fair comparison.
 
 ## Baselines
 
-| Method | Description | Config |
-|--------|-------------|--------|
-| Prompt | Zero-shot — context → user message | `configs/prompt.yaml` |
-| SFT    | Fine-tuned on (context → user message) | `configs/sft_4b.yaml` / `sft_8b.yaml` |
-| OPSD   | Teacher sees user thought as privileged info; student does not. Both output user message only. | `configs/opsd_4b_4b.yaml` |
+| Method | Description | Train / Generation Config | Eval Config |
+|--------|-------------|---------------------------|-------------|
+| Prompt | Base Qwen3-4B, zero-shot prompt inference | `configs/prompt_qwen3_4b.yaml` | `configs/eval_qwen3_4b_prompt.yaml` |
+| No-thought SFT | LoRA SFT, context + assistant reply -> user reply | `configs/sft_qwen3_4b_lora_no_thought.yaml` | `configs/eval_qwen3_4b_lora_no_thought.yaml` |
+| Thought SFT | LoRA SFT, context + assistant reply -> thought + user reply | `configs/sft_qwen3_4b_lora_thought.yaml` | `configs/eval_qwen3_4b_lora_thought.yaml` |
 
-## Running
+## Training
+
+Activate the server environment:
 
 ```bash
-# SFT
-bash scripts/run_sft.sh
+useenv swift
+cd /autodl-fs/data/beichen/projects/ThoughtTrace_exp
+```
 
-# Prompt (zero-shot)
-bash scripts/run_prompt.sh
+Train the thought SFT model:
 
-# OPSD
-bash scripts/run_opsd.sh
+```bash
+bash scripts/train_qwen3_4b_lora.sh
+```
+
+Train the no-thought SFT model:
+
+```bash
+bash scripts/train_qwen3_4b_lora.sh configs/sft_qwen3_4b_lora_no_thought.yaml
+```
+
+LoRA outputs are written to:
+
+```text
+outputs/qwen3_4b_lora_thought/
+outputs/qwen3_4b_lora_no_thought/
+```
+
+The training script reads the YAML config and expands it into `swift sft --key value` arguments for compatibility with the server's ms-swift version.
+
+## Prompt Baseline
+
+The prompt baseline uses the same Qwen3-4B base model without LoRA training.
+
+Run on the full test set:
+
+```bash
+bash scripts/run_prompt_baseline.sh
+```
+
+Quick smoke test on 5 examples:
+
+```bash
+bash scripts/run_prompt_baseline.sh configs/prompt_qwen3_4b.yaml --limit 5
+```
+
+Predictions are written to:
+
+```text
+outputs/qwen3_4b_prompt/predictions.jsonl
+```
+
+Each prediction record contains:
+
+```json
+{
+  "prediction": "model output",
+  "reference": "ground-truth user next message",
+  "metadata": {},
+  "prompt_messages": [],
+  "example_index": 0
+}
 ```
 
 ## Evaluation
 
-Two metrics run on the fixed test set:
+Evaluation expects prediction JSONL files with `prediction` and `reference` fields.
 
-- **BLEU** — n-gram overlap via NLTK (`src/eval/bleu.py`)
-- **Embedding similarity** — cosine similarity between generated and ground-truth embeddings (`src/eval/embedding_sim.py`)
+Metrics:
+
+- **BLEU**: corpus-level n-gram overlap between predicted and reference user messages.
+- **Embedding similarity**: cosine similarity between sentence embeddings of predicted and reference messages.
+
+Evaluate the prompt baseline:
 
 ```bash
-# Evaluate all baselines
-python src/eval/run_eval.py --outputs outputs/
+bash scripts/eval.sh configs/eval_qwen3_4b_prompt.yaml
 ```
+
+Evaluate the thought SFT model:
+
+```bash
+bash scripts/eval.sh configs/eval_qwen3_4b_lora_thought.yaml
+```
+
+Evaluate the no-thought SFT model:
+
+```bash
+bash scripts/eval.sh configs/eval_qwen3_4b_lora_no_thought.yaml
+```
+
+If `sentence-transformers` is not installed, run BLEU-only evaluation:
+
+```bash
+bash scripts/eval.sh configs/eval_qwen3_4b_prompt.yaml --skip-embedding
+```
+
+For thought-model outputs, evaluation extracts only the `<reply>...</reply>` span before comparing against the reference. No-thought and prompt baselines use the full generated text as the predicted user reply.
 
 ## Results
 
-| Method | Model Size | BLEU | Embedding Sim |
-|--------|-----------|------|---------------|
-| Prompt | 4B       | —    | —             |
-| Prompt | 8B       | —    | —             |
-| SFT    | 4B       | —    | —             |
-| SFT    | 8B       | —    | —             |
-| OPSD   | 4B→4B    | —    | —             |
-| OPSD   | 8B→8B    | —    | —             |
+| Method | Model | BLEU | Embedding Sim |
+|--------|-------|------|---------------|
+| Prompt | Qwen3-4B | — | — |
+| No-thought SFT | Qwen3-4B + LoRA | — | — |
+| Thought SFT | Qwen3-4B + LoRA | — | — |
 
 ## Todo
 
-- [ ] OPSD 4B/8B formal experiments
-- [ ] Scheme A: generate thought alongside user message
-- [ ] Data augmentation (dialogue truncation, meta-data based)
-- [ ] Extend to datasets without thought annotations
+- [ ] Generate predictions for trained LoRA checkpoints with `src/inference/generate.py`.
+- [ ] Add OPSD / privileged-distillation experiments.
+- [ ] Add longer-context ablations such as `max_length=8192`.
+- [ ] Add human or LLM-judge evaluation for semantic and behavioral quality.
 
 ## License
 

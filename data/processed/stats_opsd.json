@@ -1,0 +1,21 @@
+{
+  "train_samples": 2494,
+  "test_samples": 339,
+  "max_history_turns": 6,
+  "require_reaction": true,
+  "require_reason": true,
+  "train_stats": {
+    "conversations": 1939,
+    "assistant_to_user_pairs": 5760,
+    "skipped_missing_reaction": 1989,
+    "skipped_missing_reason": 1277,
+    "samples": 2494
+  },
+  "test_stats": {
+    "conversations": 216,
+    "assistant_to_user_pairs": 614,
+    "skipped_missing_reaction": 151,
+    "skipped_missing_reason": 124,
+    "samples": 339
+  }
+}

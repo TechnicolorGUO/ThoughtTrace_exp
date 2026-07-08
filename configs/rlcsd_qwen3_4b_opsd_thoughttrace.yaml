@@ -1,0 +1,56 @@
+# RLCSD/verl-style OPSD for ThoughtTrace user simulation.
+# Student sees only `problem`; teacher sees `problem + solution` where solution
+# is the user's private thought. Task reward is neutral; optimization uses
+# teacher-student distillation over student rollout tokens.
+
+method: opsd
+model_path: /root/autodl-fs/beichen/public_models/Qwen3-4B
+
+use_lora: true
+lora_r: 16
+lora_alpha: 32
+
+train_dataset: data/processed/user_sim_opsd_train.jsonl
+val_dataset: data/processed/user_sim_opsd_test.jsonl
+data_dir: .
+max_train_samples: 0
+
+learning_rate: 5e-6
+num_epochs: 1
+per_device_batch_size: 1
+group_size: 1
+train_micro_batch_size: 1
+gradient_accumulation_steps: 4
+max_grad_norm: 0.1
+warmup_steps: 10
+weight_decay: 0.01
+
+max_prompt_length: 4096
+max_completion_length: 256
+val_max_completion_length: 256
+temperature: 1.0
+top_p: 0.95
+top_k_sampling: 20
+student_enable_thinking: false
+teacher_enable_thinking: false
+val_enable_thinking: false
+thinking_system_prompt: false
+
+privileged_text_mode: solution
+
+vllm_gpu_memory_utilization: 0.5
+vllm_tensor_parallel_size: 1
+
+beta: 0.0
+jsd_token_clip: 0.05
+teacher_mode: fixed
+rollout_is: none
+
+logging_steps: 1
+save_steps: 20
+eval_steps: 20
+val_before_train: false
+output_dir: outputs/qwen3_4b_rlcsd_opsd
+use_swanlab: false
+project_name: thoughttrace_rlcsd_opsd
+experiment_name: qwen3_4b_rlcsd_opsd_thoughttrace
