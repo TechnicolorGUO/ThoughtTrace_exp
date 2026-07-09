@@ -11,9 +11,11 @@ Privileged distillation for user simulation in dialogue. The project uses the Th
 │   ├── sft_qwen3_4b_lora_thought.yaml
 │   ├── sft_qwen3_4b_lora_no_thought.yaml
 │   ├── prompt_qwen3_4b.yaml
+│   ├── prompt_qwen3_4b_vllm.yaml
 │   ├── eval_qwen3_4b_lora_thought.yaml
 │   ├── eval_qwen3_4b_lora_no_thought.yaml
-│   └── eval_qwen3_4b_prompt.yaml
+│   ├── eval_qwen3_4b_prompt.yaml
+│   └── eval_qwen3_4b_prompt_vllm.yaml
 │
 ├── data/
 │   ├── raw/
@@ -33,6 +35,7 @@ Privileged distillation for user simulation in dialogue. The project uses the Th
 ├── scripts/
 │   ├── train_qwen3_4b_lora.sh
 │   ├── run_prompt_baseline.sh
+│   ├── run_prompt_baseline_vllm.sh
 │   └── eval.sh
 │
 ├── src/
@@ -194,6 +197,7 @@ OPD does not expose ThoughtTrace private thoughts. The teacher is a separate mod
 | Method | Description | Train / Generation Config | Eval Config |
 |--------|-------------|---------------------------|-------------|
 | Prompt | Base Qwen3-4B, zero-shot prompt inference | `configs/prompt_qwen3_4b.yaml` | `configs/eval_qwen3_4b_prompt.yaml` |
+| Prompt vLLM | Same prompt baseline, batched vLLM inference | `configs/prompt_qwen3_4b_vllm.yaml` | `configs/eval_qwen3_4b_prompt_vllm.yaml` |
 | No-thought SFT | LoRA SFT, context + assistant reply -> user reply | `configs/sft_qwen3_4b_lora_no_thought.yaml` | `configs/eval_qwen3_4b_lora_no_thought.yaml` |
 | Thought SFT | LoRA SFT, context + assistant reply -> thought + user reply | `configs/sft_qwen3_4b_lora_thought.yaml` | `configs/eval_qwen3_4b_lora_thought.yaml` |
 
@@ -231,22 +235,30 @@ The training script reads the YAML config and expands it into `swift sft --key v
 
 The prompt baseline uses the same Qwen3-4B base model without LoRA training.
 
-Run on the full test set:
+Run with Hugging Face Transformers:
 
 ```bash
 bash scripts/run_prompt_baseline.sh
+```
+
+Run with vLLM batched inference:
+
+```bash
+bash scripts/run_prompt_baseline_vllm.sh
 ```
 
 Quick smoke test on 5 examples:
 
 ```bash
 bash scripts/run_prompt_baseline.sh configs/prompt_qwen3_4b.yaml --limit 5
+bash scripts/run_prompt_baseline_vllm.sh configs/prompt_qwen3_4b_vllm.yaml --limit 5
 ```
 
 Predictions are written to:
 
 ```text
 outputs/qwen3_4b_prompt/predictions.jsonl
+outputs/qwen3_4b_prompt_vllm/predictions.jsonl
 ```
 
 Each prediction record contains:
