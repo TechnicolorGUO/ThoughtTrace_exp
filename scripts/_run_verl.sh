@@ -15,6 +15,16 @@ if [ -n "${HF_ENDPOINT}" ]; then export HF_ENDPOINT; fi
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export HYDRA_FULL_ERROR=1
 export PYTHONUNBUFFERED=1
+# Cap per-process CPU thread pools. With N_GPUS vLLM/worker procs each spawning
+# OpenBLAS/OMP threads sized to the (large) host core count, the total thread
+# count blows past the container's pids/threads limit -> "pthread_create failed
+# / can't start new thread". These caps keep each proc small; override by
+# exporting the vars before launch if you have headroom.
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
+export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
+export NUMEXPR_NUM_THREADS=${NUMEXPR_NUM_THREADS:-4}
+export VECLIB_MAXIMUM_THREADS=${VECLIB_MAXIMUM_THREADS:-4}
 export TORCH_NCCL_TRACE_BUFFER_SIZE=${TORCH_NCCL_TRACE_BUFFER_SIZE:-20000}
 # Note: do NOT set TORCH_DISTRIBUTED_DEBUG=DETAIL — its debug PG wrapper
 # lacks `allgather_into_tensor_coalesced`, which FSDP2/DTensor need when
