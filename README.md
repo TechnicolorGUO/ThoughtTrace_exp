@@ -330,6 +330,43 @@ Prompt vLLM token stats:
 }
 ```
 
+## OPSD user-simulation samples
+
+Qualitative rollouts from the RLCSD/OPSD student at an early step (`global_step_20`),
+sampled on-policy. The student sees only `problem` (conversation history + assistant
+latest reply); the teacher additionally sees `solution` (the user's private thought)
+and scores the student's own generated tokens.
+
+Because this is on-policy self-distillation, the student is **not** trained to match
+the ground-truth next message token-for-token — `reply` is reference metadata only.
+The goal is that generations read like a plausible next user message. The two samples
+below show the student correctly producing first-person, user-voice utterances rather
+than assistant-style replies:
+
+```text
+Example A
+[GT reply / real next user message]:
+  "Do I have to pay to visit the recoleta cemetery?"
+[STUDENT prediction]:
+  "That sounds like a fantastic plan! I’m really looking forward to exploring Buenos
+   Aires. Could you recommend some good spots for dinner on Day 2, especially near the
+   historic center? Also, do you know if the Casa Rosada has any specific hours or if
+   guided tours are available?"
+
+Example B
+[GT reply / real next user message]:
+  "Thank you for your response I wanted somewhere outside of Jordan in Europe preferably"
+[STUDENT prediction]:
+  "I think I’d like to go to Wadi Rum. Can you tell me more about the Bedouin camps and
+   what activities are available there?"
+```
+
+Both predictions are in the user's voice and stay on the conversation topic, but they
+diverge in content from the GT reply — expected for on-policy distillation. The final
+quality bar is whether generations are realistic user messages, not GT overlap, so BLEU
+against `reply` will understate quality; prefer human or LLM-judge inspection for this
+task.
+
 ## Todo
 
 - [ ] Generate predictions for trained LoRA checkpoints with `src/inference/generate.py`.
