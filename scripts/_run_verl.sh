@@ -113,6 +113,12 @@ ROLLOUT_SAMPLES=$((ROLLOUT_BATCH * GROUP_SIZE))    # samples per rollout
 # Default = rollout_samples (one update per rollout).
 # Set smaller in yaml to get multiple updates per rollout.
 PPO_MINI_BS=$(Y ppo_mini_batch_size ${ROLLOUT_BATCH})
+# ppo_micro_batch_size_per_gpu: with use_dynamic_bsz=True this does NOT drive the
+# real micro-batching (token budgets do), but fsdp_workers still asserts that the
+# per-GPU-normalized mini_batch is divisible by it. For small dialogue batches
+# (mini_batch normalizes to 1 across many GPUs) the default 4 breaks; override in
+# yaml with ppo_micro_batch_size_per_gpu: 1. Default 4 preserves math configs.
+PPO_MICRO_BS=$(Y ppo_micro_batch_size_per_gpu 4)
 # These token budgets are for full sequence length, so they must include prompt + response.
 TRAIN_MAX_SEQ_LEN=$((MAX_PROMPT + MAX_RESP))
 VAL_MAX_SEQ_LEN=$((MAX_PROMPT + VAL_MAX_RESP))
@@ -557,7 +563,7 @@ python3 -m $MAIN \
     actor_rollout_ref.actor.optim.lr_warmup_steps=${WARMUP} \
     actor_rollout_ref.actor.grad_clip=${MAX_GRAD_NORM} \
     actor_rollout_ref.actor.ppo_mini_batch_size=${PPO_MINI_BS} \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=${PPO_MICRO_BS} \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${ACTOR_MAX_TOKEN_LEN} \
     actor_rollout_ref.actor.use_kl_loss=True \

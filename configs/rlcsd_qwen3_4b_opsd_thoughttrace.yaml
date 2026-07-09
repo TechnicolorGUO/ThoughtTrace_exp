@@ -23,8 +23,11 @@ learning_rate: 5e-6
 num_epochs: 1
 per_device_batch_size: 1
 group_size: 1
-train_micro_batch_size: 1
-gradient_accumulation_steps: 4
+# With 8 GPUs, train_batch_size=8 normalizes to mini_batch=1 per GPU, so the
+# per-GPU micro batch must be 1 (dynamic bsz drives the real micro-batching).
+ppo_micro_batch_size_per_gpu: 1
+# NOTE: train_micro_batch_size / gradient_accumulation_steps are NOT read by
+# _run_verl.sh (they targeted the old non-verl trainer); removed to avoid confusion.
 max_grad_norm: 0.1
 warmup_steps: 10
 weight_decay: 0.01
