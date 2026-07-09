@@ -16,7 +16,9 @@ import sys
 import json
 import random
 
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# self_distill_main lives at <root>/src/opsd_rlcsd/, so climb three levels to
+# reach the project root (was two levels when it lived directly under src/).
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 sys.path.insert(0, os.path.join(project_root, "third_party", "verl"))
 
@@ -1016,7 +1018,7 @@ if __name__ == "__main__":
     from verl.trainer.main_ppo import migrate_legacy_reward_impl, run_ppo
     from verl.utils.device import auto_set_device
 
-    @hydra.main(config_path="../third_party/verl/verl/trainer/config", config_name="ppo_trainer", version_base=None)
+    @hydra.main(config_path="../../third_party/verl/verl/trainer/config", config_name="ppo_trainer", version_base=None)
     def main(config):
         auto_set_device(config)
         config = migrate_legacy_reward_impl(config)
