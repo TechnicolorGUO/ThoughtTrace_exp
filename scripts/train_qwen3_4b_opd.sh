@@ -7,14 +7,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ---- user-adjustable ----
-MODEL_PATH="${MODEL_PATH:-${HOME}/autodl-fs/beichen/public_models/Qwen3.5-4B}"
+MODEL_PATH="${MODEL_PATH:-/root/autodl-fs/beichen/public_models/Qwen3-4B}"
 STUDENT_MODEL="${STUDENT_MODEL:-$MODEL_PATH}"
-TEACHER_MODEL="${TEACHER_MODEL:-${HOME}/autodl-fs/beichen/public_models/Qwen3.5-9B}"
+TEACHER_MODEL="${TEACHER_MODEL:-/root/autodl-fs/beichen/public_models/Qwen3-8B}"
 
 VERL_ROOT="${VERL_ROOT:-}"
 
-TRAIN_DATA="${TRAIN_DATA:-${PROJECT_ROOT}/data/processed_en/user_sim_train.parquet}"
-VAL_DATA="${VAL_DATA:-${PROJECT_ROOT}/data/processed_en/user_sim_val.parquet}"
+TRAIN_DATA="${TRAIN_DATA:-${PROJECT_ROOT}/data/processed/user_sim_opd_train.parquet}"
+VAL_DATA="${VAL_DATA:-${PROJECT_ROOT}/data/processed/user_sim_opd_test.parquet}"
 CONVERT_DATA_IF_MISSING="${CONVERT_DATA_IF_MISSING:-True}"
 
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
@@ -51,16 +51,16 @@ student_model_name="${STUDENT_MODEL##*/}"
 teacher_model_name="${TEACHER_MODEL##*/}"
 timestamp=${TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}
 experiment_name=${EXPERIMENT_NAME:-thoughttrace-stu-${student_model_name}-tch-${teacher_model_name}-topk-${distillation_topk}-${timestamp}}
-ckpt_dir=${CKPT_DIR:-${PROJECT_ROOT}/output/opd/${experiment_name}}
+ckpt_dir=${CKPT_DIR:-${PROJECT_ROOT}/outputs/qwen3_4b_opd/${experiment_name}}
 # ---- end user-adjustable ----
 
 if [[ "$CONVERT_DATA_IF_MISSING" == "True" && ! -f "$TRAIN_DATA" ]]; then
     cd "$PROJECT_ROOT"
-    python scripts/convert_swift_sft_to_verl_opd_parquet.py \
-        --train-input data/processed_en/user_sim_train.jsonl \
-        --val-input data/processed_en/user_sim_val.jsonl \
+    python data/scripts/convert_to_verl_opd_parquet.py \
+        --train-input data/processed/user_sim_no_thought_train.jsonl \
+        --test-input data/processed/user_sim_no_thought_test.jsonl \
         --train-output "$TRAIN_DATA" \
-        --val-output "$VAL_DATA"
+        --test-output "$VAL_DATA"
 fi
 
 train_files="['$TRAIN_DATA']"

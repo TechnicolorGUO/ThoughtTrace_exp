@@ -10,8 +10,12 @@ use_lora: true
 lora_r: 16
 lora_alpha: 32
 
-train_dataset: data/processed/user_sim_opsd_train.jsonl
-val_dataset: data/processed/user_sim_opsd_test.jsonl
+# Point directly at the parquet produced by data/scripts/convert_to_opsd.py.
+# train_files/val_files bypass the dataset-name -> data/verl/<name>/*.parquet
+# resolution in _run_verl.sh. Use absolute paths (or paths relative to the dir
+# you launch from) when running under RLCSD's launcher.
+train_files: data/processed/user_sim_opsd_train.parquet
+val_files: data/processed/user_sim_opsd_test.parquet
 data_dir: .
 max_train_samples: 0
 

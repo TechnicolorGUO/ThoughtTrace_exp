@@ -84,6 +84,111 @@ seed: 42
 
 The thought and no-thought SFT files are pair-level aligned. The no-thought version does not expose thought text in the input or output, but it uses the same examples as the thought version for a fair comparison.
 
+### Datapoint Examples
+
+All baselines are constructed from the same underlying prediction event:
+
+```text
+conversation history + assistant latest reply -> user's next message
+```
+
+The formats differ only in what supervision or privileged context is exposed.
+
+No-thought SFT / prompt baseline datapoint:
+
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are simulating a real user in a human-AI conversation. Given the conversation history and the assistant's latest reply, write the user's next message only."
+    },
+    {
+      "role": "user",
+      "content": "[Conversation History]\nUser: I want to find the better price for a new couch. How could I do it ?\n\n[Assistant Latest Reply]\nAssistant: A good way is to compare the total value, not just the sticker price. ..."
+    },
+    {
+      "role": "assistant",
+      "content": "step-by-step template please"
+    }
+  ],
+  "metadata": {
+    "conversation_id": "user12_task2_conversation1",
+    "assistant_message_id": 1773849009461,
+    "next_user_message_id": 1773849254132
+  }
+}
+```
+
+Thought SFT datapoint:
+
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are simulating a real user in a human-AI conversation. Given the conversation history and the assistant's latest reply, first write the user's private thoughts, then write the user's next message. Follow the exact output format."
+    },
+    {
+      "role": "user",
+      "content": "[Conversation History]\nUser: I want to find the better price for a new couch. How could I do it ?\n\n[Assistant Latest Reply]\nAssistant: A good way is to compare the total value, not just the sticker price. ..."
+    },
+    {
+      "role": "assistant",
+      "content": "<thought>\n[Reaction]: I like that it propose advices regarding a variety of criterias.\n[Motivation]: I want to see the format of the template proposed.\n</thought>\n<reply>\nstep-by-step template please\n</reply>"
+    }
+  ]
+}
+```
+
+OPSD datapoint:
+
+```json
+{
+  "problem": "[Conversation History]\nUser: I want to find the better price for a new couch. How could I do it ?\n\n[Assistant Latest Reply]\nAssistant: A good way is to compare the total value, not just the sticker price. ...",
+  "solution": "[Reaction]: I like that it propose advices regarding a variety of criterias.\n[Motivation]: I want to see the format of the template proposed.",
+  "reply": "step-by-step template please"
+}
+```
+
+In this project, the OPSD field `solution` means `user_thought`. The intended privileged setup is:
+
+```text
+student input = problem
+teacher input = problem + user_thought
+```
+
+So `problem` is the only information visible to the student. The teacher additionally receives `solution`, which contains the user's private ThoughtTrace annotations (`[Reaction]` + `[Motivation]`). The `reply` field is the ground-truth next user message and is kept as reference metadata; it should not be appended to either the student or teacher prompt during on-policy distillation.
+
+OPD parquet datapoint:
+
+```json
+{
+  "data_source": "thoughttrace",
+  "prompt": [
+    {
+      "role": "system",
+      "content": "You are simulating a real user in a human-AI conversation..."
+    },
+    {
+      "role": "user",
+      "content": "[Conversation History]\nUser: ...\n\n[Assistant Latest Reply]\nAssistant: ..."
+    }
+  ],
+  "ability": "user_simulation",
+  "reward_model": {
+    "style": "reference",
+    "ground_truth": "step-by-step template please"
+  },
+  "extra_info": {
+    "split": "train",
+    "reference": "step-by-step template please"
+  }
+}
+```
+
+OPD does not expose ThoughtTrace private thoughts. The teacher is a separate model that distills its behavior on the same no-thought prompt.
+
 ## Baselines
 
 | Method | Description | Train / Generation Config | Eval Config |

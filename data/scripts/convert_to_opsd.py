@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
-"""Convert ThoughtTrace conversations into OPSD (problem/solution) JSONL.
+"""Convert ThoughtTrace conversations directly into RLCSD-OPSD verl parquet.
 
-OPSD (On-Policy Self-Distillation) needs two flat columns:
-  - problem:  the STUDENT-visible prompt. Here = conversation history + the
-              assistant's latest reply (everything the user sees before replying).
-  - solution: the PRIVILEGED reference only the TEACHER sees. Here = the user's
-              private thought ([Reaction] + [Motivation]).
+OPSD (On-Policy Self-Distillation) trains a student to imitate a *thought-
+informed teacher* WITHOUT ever giving the student the thought:
 
-The student rolls out the user's next message conditioned only on `problem`;
-the teacher scores those same tokens with the private thought in context. Training
-distills "thought-informed" next-message generation into a student that never
-sees the thought.
+  - student sees only the conversation history + the assistant's latest reply,
+    and rolls out the user's next message on-policy.
+  - teacher sees the same context PLUS the user's private thought
+    ([Reaction] + [Motivation]) and scores the student's rolled-out tokens.
+  - loss = forward-KL(teacher || student) on those shared response tokens.
 
-We reuse the SAME train/test conversation split produced by
+This script reads the SAME train/test conversation split produced by
 convert_to_swift_sft.py (train_conversations.jsonl / test_conversations.jsonl)
-so OPSD and SFT stay comparable. The `reply` (ground-truth next message) is kept
-as reference metadata only; the OPSD trainer does not consume it (on-policy).
+so OPSD/SFT/OPD stay comparable, and writes verl parquet directly -- no
+intermediate problem/solution JSONL.
+
+RLCSD verl schema (per row), consumed by RLCSD/src/self_distill_main.py:
+  data_source   str    -- NON-math tag, so the math prompt monkey-patch is skipped
+  prompt        list   -- student chat messages (instruction + context)
+  ability       str
+  reward_model  dict   -- {"style": "reference", "ground_truth": <next msg>}
+                          reference/eval metadata only; teacher must NOT see it
+                          (enforced by the solution-only teacher template).
+  extra_info    dict   -- {"problem": <context>, "solution": <thought>, ...}
+                          problem+solution are what the teacher prompt is rebuilt
+                          from at run time.
 """
 from __future__ import annotations
 
@@ -26,6 +35,16 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_SOURCE = "thoughttrace_user_sim"
+
+# Student-side instruction. The student is asked to play the *user* and produce
+# the next user message given the visible context. Keep this parallel to the
+# teacher framing in opsd_format so the shared response tokens line up.
+STUDENT_INSTRUCTION = (
+    "You are role-playing as the user in the conversation below. "
+    "Based on the conversation history and the assistant's latest reply, "
+    "write the user's next message."
+)
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -36,13 +55,6 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             if line:
                 rows.append(json.loads(line))
     return rows
-
-
-def write_jsonl(rows: list[dict[str, Any]], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def thought_text(items: list[dict[str, Any]]) -> str:
@@ -64,25 +76,26 @@ def format_history(messages: list[dict[str, Any]], *, max_history_turns: int | N
     return "\n".join(lines)
 
 
-def build_problem(history: list[dict[str, Any]], assistant_message: dict[str, Any], *, max_history_turns: int | None) -> str:
-    """Student-visible prompt: history + assistant latest reply (no thought)."""
+def build_context(history: list[dict[str, Any]], assistant_message: dict[str, Any], *, max_history_turns: int | None) -> str:
+    """Shared context both student and teacher condition on (no thought)."""
     history_text = format_history(history, max_history_turns=max_history_turns)
     latest_reply = str(assistant_message.get("content", "")).strip()
-    if history_text:
-        return f"[Conversation History]\n{history_text}\n\n[Assistant Latest Reply]\nAssistant: {latest_reply}"
-    return f"[Conversation History]\n\n[Assistant Latest Reply]\nAssistant: {latest_reply}"
+    return (
+        f"[Conversation History]\n{history_text}\n\n"
+        f"[Assistant Latest Reply]\nAssistant: {latest_reply}"
+    )
 
 
-def build_solution(assistant_message: dict[str, Any], next_user_message: dict[str, Any]) -> str:
+def build_thought(assistant_message: dict[str, Any], next_user_message: dict[str, Any]) -> str:
     """Privileged reference (teacher-only): the user's private thought."""
     reaction = thought_text(assistant_message.get("reactions") or [])
     motivation = thought_text(next_user_message.get("reasons") or [])
     return f"[Reaction]: {reaction}\n[Motivation]: {motivation}"
 
-
 def build_samples(
     conversations: list[dict[str, Any]],
     *,
+    split: str,
     max_history_turns: int | None,
     require_reaction: bool,
     require_reason: bool,
@@ -113,17 +126,43 @@ def build_samples(
                 stats["skipped_missing_reason"] += 1
                 continue
 
+            context = build_context(
+                messages[:index], assistant_message, max_history_turns=max_history_turns
+            )
+            thought = build_thought(assistant_message, next_user_message)
+            reply = str(next_user_message.get("content", "")).strip()
+            uid = (
+                f"{conversation.get('id')}:"
+                f"{assistant_message.get('id')}:"
+                f"{next_user_message.get('id')}"
+            )
+
             samples.append(
                 {
-                    "problem": build_problem(
-                        messages[:index], assistant_message, max_history_turns=max_history_turns
-                    ),
-                    "solution": build_solution(assistant_message, next_user_message),
-                    # reference only — the on-policy trainer does not read this
-                    "reply": str(next_user_message.get("content", "")).strip(),
-                    "conversation_id": conversation.get("id"),
-                    "assistant_message_id": assistant_message.get("id"),
-                    "next_user_message_id": next_user_message.get("id"),
+                    "data_source": DATA_SOURCE,
+                    # Student rollout prompt: instruction + shared context. The
+                    # non-math data_source keeps self_distill_main from rewriting
+                    # this with the \boxed{} math template.
+                    "prompt": [
+                        {"role": "user", "content": f"{STUDENT_INSTRUCTION}\n\n{context}"}
+                    ],
+                    "ability": "user_simulation",
+                    # ground_truth is the real next message. It is reference/eval
+                    # metadata ONLY -- the solution-only teacher template must not
+                    # feed it to the teacher, or the gold target leaks.
+                    "reward_model": {"style": "reference", "ground_truth": reply},
+                    "extra_info": {
+                        "split": split,
+                        "uid": uid,
+                        # problem = shared context; solution = privileged thought.
+                        # The teacher prompt is rebuilt at run time from these two.
+                        "problem": context,
+                        "solution": thought,
+                        "reference": reply,
+                        "conversation_id": conversation.get("id"),
+                        "assistant_message_id": assistant_message.get("id"),
+                        "next_user_message_id": next_user_message.get("id"),
+                    },
                 }
             )
 
@@ -131,8 +170,20 @@ def build_samples(
     return samples, stats
 
 
+def write_parquet(rows: list[dict[str, Any]], path: Path) -> None:
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise SystemExit(
+            "pandas is required to write parquet. Install pandas and pyarrow in the verl environment."
+        ) from exc
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(path, index=False)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert ThoughtTrace conversations to OPSD problem/solution JSONL.")
+    parser = argparse.ArgumentParser(description="Convert ThoughtTrace split conversations to RLCSD-OPSD verl parquet.")
     parser.add_argument("--processed-dir", default=str(PROJECT_ROOT / "data/processed"))
     parser.add_argument("--output-dir", default=str(PROJECT_ROOT / "data/processed"))
     parser.add_argument("--max-history-turns", type=int, default=6)
@@ -147,20 +198,21 @@ def main() -> None:
 
     train_rows, train_stats = build_samples(
         train_conversations,
+        split="train",
         max_history_turns=args.max_history_turns,
         require_reaction=not args.allow_missing_reaction,
         require_reason=not args.allow_missing_reason,
     )
     test_rows, test_stats = build_samples(
         test_conversations,
+        split="test",
         max_history_turns=args.max_history_turns,
         require_reaction=not args.allow_missing_reaction,
         require_reason=not args.allow_missing_reason,
     )
 
-    write_jsonl(train_rows, output_dir / "user_sim_opsd_train.jsonl")
-    write_jsonl(test_rows, output_dir / "user_sim_opsd_test.jsonl")
-    write_jsonl(train_rows[:20], output_dir / "user_sim_opsd_preview.jsonl")
+    write_parquet(train_rows, output_dir / "user_sim_opsd_train.parquet")
+    write_parquet(test_rows, output_dir / "user_sim_opsd_test.parquet")
 
     stats = {
         "train_samples": len(train_rows),
@@ -170,6 +222,8 @@ def main() -> None:
         "require_reason": not args.allow_missing_reason,
         "train_stats": train_stats,
         "test_stats": test_stats,
+        "train_output": str(output_dir / "user_sim_opsd_train.parquet"),
+        "test_output": str(output_dir / "user_sim_opsd_test.parquet"),
     }
     (output_dir / "stats_opsd.json").write_text(
         json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -179,4 +233,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
