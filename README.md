@@ -310,11 +310,25 @@ For thought-model outputs, evaluation extracts only the `<reply>...</reply>` spa
 
 ## Results
 
-| Method | Model | BLEU | Embedding Sim |
-|--------|-------|------|---------------|
-| Prompt | Qwen3-4B | — | — |
-| No-thought SFT | Qwen3-4B + LoRA | — | — |
-| Thought SFT | Qwen3-4B + LoRA | — | — |
+| Method | Model | Examples | BLEU | Embedding Sim | Notes |
+|--------|-------|----------|------|---------------|-------|
+| Prompt vLLM | Qwen3-4B | 339 | 0.0028 | 0.2438 | `max_new_tokens=256`; generated replies are much longer than references |
+| Prompt | Qwen3-4B | — | — | — | HF Transformers version, same prompt format |
+| No-thought SFT | Qwen3-4B + LoRA | — | — | — | Pending |
+| Thought SFT | Qwen3-4B + LoRA | — | — | — | Pending |
+
+Prompt vLLM token stats:
+
+```json
+{
+  "prediction_tokens": 86710.0,
+  "reference_tokens": 7000.0,
+  "precision_1": 0.0379,
+  "precision_2": 0.0054,
+  "precision_3": 0.0010,
+  "precision_4": 0.0003
+}
+```
 
 ## Todo
 
